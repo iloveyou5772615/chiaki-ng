@@ -2408,6 +2408,109 @@ DialogView {
                                 }
                             }
                         }
+                        ColumnLayout {
+                            id: mouseAimSettings
+                            Layout.columnSpan: 3
+                            Layout.alignment: Qt.AlignHCenter
+                            spacing: 2
+
+                            CheckBox {
+                                text: qsTr("Mouse as right stick (F8 locks / releases the mouse)")
+                                checked: Chiaki.settings.mouseAimEnabled
+                                onToggled: Chiaki.settings.mouseAimEnabled = checked
+                                Material.roundedScale: Material.SmallScale
+                                Material.background: visualFocus ? Material.accent : undefined
+                                onActiveFocusChanged: if (activeFocus) keysFlick.ensureItemVisible(this)
+                            }
+
+                            Label {
+                                visible: Chiaki.settings.mouseAimEnabled
+                                text: qsTr("While locked: left click = R2, right click = L2, middle = R3, back/forward = L1/R1. Switching windows also releases the mouse. Takes effect on the next connection.")
+                                wrapMode: Text.WordWrap
+                                Layout.preferredWidth: 600
+                                opacity: 0.8
+                            }
+
+                            RowLayout {
+                                visible: Chiaki.settings.mouseAimEnabled
+                                spacing: 10
+                                Label {
+                                    text: qsTr("Sensitivity")
+                                    Layout.preferredWidth: 200
+                                    horizontalAlignment: Text.AlignRight
+                                }
+                                Slider {
+                                    Layout.preferredWidth: 250
+                                    from: 0.1
+                                    to: 5.0
+                                    stepSize: 0.05
+                                    value: Chiaki.settings.mouseAimSensitivity
+                                    onMoved: Chiaki.settings.mouseAimSensitivity = value
+                                    onActiveFocusChanged: if (activeFocus) keysFlick.ensureItemVisible(this)
+                                }
+                                Label {
+                                    text: Chiaki.settings.mouseAimSensitivity.toFixed(2)
+                                    Layout.preferredWidth: 60
+                                }
+                            }
+
+                            RowLayout {
+                                visible: Chiaki.settings.mouseAimEnabled
+                                spacing: 10
+                                Label {
+                                    text: qsTr("Anti-deadzone")
+                                    Layout.preferredWidth: 200
+                                    horizontalAlignment: Text.AlignRight
+                                }
+                                Slider {
+                                    Layout.preferredWidth: 250
+                                    from: 0.0
+                                    to: 0.5
+                                    stepSize: 0.01
+                                    value: Chiaki.settings.mouseAimDeadzone
+                                    onMoved: Chiaki.settings.mouseAimDeadzone = value
+                                    onActiveFocusChanged: if (activeFocus) keysFlick.ensureItemVisible(this)
+                                }
+                                Label {
+                                    text: Math.round(Chiaki.settings.mouseAimDeadzone * 100) + "%"
+                                    Layout.preferredWidth: 60
+                                }
+                            }
+
+                            RowLayout {
+                                visible: Chiaki.settings.mouseAimEnabled
+                                spacing: 10
+                                Label {
+                                    text: qsTr("Response curve")
+                                    Layout.preferredWidth: 200
+                                    horizontalAlignment: Text.AlignRight
+                                }
+                                Slider {
+                                    Layout.preferredWidth: 250
+                                    from: 0.5
+                                    to: 2.0
+                                    stepSize: 0.05
+                                    value: Chiaki.settings.mouseAimCurve
+                                    onMoved: Chiaki.settings.mouseAimCurve = value
+                                    onActiveFocusChanged: if (activeFocus) keysFlick.ensureItemVisible(this)
+                                }
+                                Label {
+                                    text: Chiaki.settings.mouseAimCurve.toFixed(2)
+                                    Layout.preferredWidth: 60
+                                }
+                            }
+
+                            CheckBox {
+                                visible: Chiaki.settings.mouseAimEnabled
+                                text: qsTr("Invert vertical mouse axis")
+                                checked: Chiaki.settings.mouseAimInvertY
+                                onToggled: Chiaki.settings.mouseAimInvertY = checked
+                                Material.roundedScale: Material.SmallScale
+                                Material.background: visualFocus ? Material.accent : undefined
+                                onActiveFocusChanged: if (activeFocus) keysFlick.ensureItemVisible(this)
+                            }
+                        }
+
                         Repeater {
                             id: chiakiKeys
                             model: Chiaki.settings.controllerMapping

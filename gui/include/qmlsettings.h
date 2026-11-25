@@ -81,6 +81,11 @@ class QmlSettings : public QObject
     Q_PROPERTY(QString psnAuthTokenExpiry READ psnAuthTokenExpiry WRITE setPsnAuthTokenExpiry NOTIFY psnAuthTokenExpiryChanged)
     Q_PROPERTY(QString psnAccountId READ psnAccountId WRITE setPsnAccountId NOTIFY psnAccountIdChanged)
     Q_PROPERTY(bool mouseTouchEnabled READ mouseTouchEnabled WRITE setMouseTouchEnabled NOTIFY mouseTouchEnabledChanged)
+    Q_PROPERTY(bool mouseAimEnabled READ mouseAimEnabled WRITE setMouseAimEnabled NOTIFY mouseAimEnabledChanged)
+    Q_PROPERTY(float mouseAimSensitivity READ mouseAimSensitivity WRITE setMouseAimSensitivity NOTIFY mouseAimSensitivityChanged)
+    Q_PROPERTY(float mouseAimDeadzone READ mouseAimDeadzone WRITE setMouseAimDeadzone NOTIFY mouseAimDeadzoneChanged)
+    Q_PROPERTY(float mouseAimCurve READ mouseAimCurve WRITE setMouseAimCurve NOTIFY mouseAimCurveChanged)
+    Q_PROPERTY(bool mouseAimInvertY READ mouseAimInvertY WRITE setMouseAimInvertY NOTIFY mouseAimInvertYChanged)
     Q_PROPERTY(bool keyboardEnabled READ keyboardEnabled WRITE setKeyboardEnabled NOTIFY keyboardEnabledChanged)
     Q_PROPERTY(bool dpadTouchEnabled READ dpadTouchEnabled WRITE setDpadTouchEnabled NOTIFY dpadTouchEnabledChanged)
     Q_PROPERTY(bool iDROnFECFailureEnabled READ iDROnFECFailureEnabled WRITE setIDROnFECFailureEnabled NOTIFY iDROnFECFailureEnabledChanged)
@@ -547,6 +552,17 @@ public:
     bool mouseTouchEnabled() const;
     void setMouseTouchEnabled(bool enabled);
 
+    bool mouseAimEnabled() const;
+    void setMouseAimEnabled(bool enabled);
+    float mouseAimSensitivity() const;
+    void setMouseAimSensitivity(float sensitivity);
+    float mouseAimDeadzone() const;
+    void setMouseAimDeadzone(float deadzone);
+    float mouseAimCurve() const;
+    void setMouseAimCurve(float curve);
+    bool mouseAimInvertY() const;
+    void setMouseAimInvertY(bool invert);
+
     bool keyboardEnabled() const;
     void setKeyboardEnabled(bool enabled);
 
@@ -681,6 +697,11 @@ signals:
     void psnAuthTokenExpiryChanged();
     void psnAccountIdChanged();
     void mouseTouchEnabledChanged();
+    void mouseAimEnabledChanged();
+    void mouseAimSensitivityChanged();
+    void mouseAimDeadzoneChanged();
+    void mouseAimCurveChanged();
+    void mouseAimInvertYChanged();
     void keyboardEnabledChanged();
     void dpadTouchEnabledChanged();
     void dpadTouchIncrementChanged();

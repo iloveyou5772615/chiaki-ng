@@ -65,6 +65,12 @@ extern "C" {
 #include <objc/message.h>
 #include <objc/runtime.h>
 #endif
+#if defined(Q_OS_WIN)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 Q_LOGGING_CATEGORY(chiakiGui, "chiaki.gui", QtInfoMsg);
 
@@ -2756,6 +2762,8 @@ void QmlMainWindow::setKeepVideo(bool keep)
 
 void QmlMainWindow::grabInput()
 {
+    // Menus and dialogs need a free mouse
+    setMouseAimCaptured(false);
     setCursor(Qt::ArrowCursor);
     grab_input++;
     if (session)
@@ -5162,6 +5170,8 @@ renderer_backend_ready:
         const bool preserve_startup_warmup = s && startup_warmup_preserve_next_session_change;
         startup_warmup_preserve_next_session_change = false;
         session = s;
+        // Never keep the cursor locked across a session change
+        setMouseAimCaptured(false);
         stream_session_active.storeRelease(s ? 1 : 0);
         startup_video_visible_generation.fetchAndAddRelaxed(1);
         grab_input = 0;
@@ -7651,6 +7661,13 @@ bool QmlMainWindow::handleShortcut(QKeyEvent *event)
 {
     if (event->modifiers() == Qt::NoModifier) {
         switch (event->key()) {
+        case Qt::Key_F8:
+            if (session && session->GetMouseAimEnabled()) {
+                if (!event->isAutoRepeat())
+                    setMouseAimCaptured(!mouse_aim_captured);
+                return true;
+            }
+            break;
         case Qt::Key_F11:
             if (windowState() != Qt::WindowFullScreen)
                 fullscreenTime();
@@ -7703,6 +7720,33 @@ bool QmlMainWindow::nvidiaCard() const
 
 bool QmlMainWindow::event(QEvent *event)
 {
+    switch (event->type()) {
+    case QEvent::FocusOut:
+    case QEvent::Hide:
+        // Alt+Tab, clicking another window, minimizing: give the mouse back
+        setMouseAimCaptured(false);
+        break;
+    default:
+        break;
+    }
+
+    if (mouse_aim_captured && session) {
+        switch (event->type()) {
+        case QEvent::MouseMove:
+            // Motion comes from raw input (nativeEvent); the cursor itself is pinned
+            return true;
+        case QEvent::MouseButtonPress:
+        case QEvent::MouseButtonDblClick: // Qt sends DblClick instead of the second press
+            session->HandleMouseAimButton(static_cast<QMouseEvent*>(event)->button(), true);
+            return true;
+        case QEvent::MouseButtonRelease:
+            session->HandleMouseAimButton(static_cast<QMouseEvent*>(event)->button(), false);
+            return true;
+        default:
+            break;
+        }
+    }
+
     switch (event->type()) {
     case QEvent::MouseMove:
     case QEvent::MouseButtonPress:
@@ -7787,6 +7831,8 @@ bool QmlMainWindow::event(QEvent *event)
         else if(session && settings->GetWindowType() == WindowType::AdjustableResolution && isStreamWindowAdjustable())
             settings->SetStreamGeometry(geometry());
         updateStatsOverlayGeometry();
+        if (mouse_aim_captured)
+            updateMouseAimClip();
         break;
     case QEvent::Resize:
         if(!session && isWindowAdjustable())
@@ -7796,6 +7842,8 @@ bool QmlMainWindow::event(QEvent *event)
         if (isExposed())
             updateSwapchain();
         updateStatsOverlayGeometry();
+        if (mouse_aim_captured)
+            updateMouseAimClip();
         break;
     default:
         break;
@@ -7807,4 +7855,77 @@ bool QmlMainWindow::event(QEvent *event)
 QObject *QmlMainWindow::focusObject() const
 {
     return quick_window->focusObject();
+}
+
+void QmlMainWindow::setMouseAimCaptured(bool captured)
+{
+    if (captured && (!session || !session->GetMouseAimEnabled() || grab_input || !isActive()))
+        captured = false;
+    if (captured == mouse_aim_captured)
+        return;
+#if defined(Q_OS_WIN)
+    RAWINPUTDEVICE rid = {};
+    rid.usUsagePage = 0x01; // generic desktop
+    rid.usUsage = 0x02;     // mouse
+    rid.dwFlags = captured ? 0 : RIDEV_REMOVE;
+    rid.hwndTarget = captured ? reinterpret_cast<HWND>(winId()) : nullptr;
+    if (!RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
+        qCWarning(chiakiGui) << "Mouse aim: RegisterRawInputDevices failed, error" << GetLastError();
+        if (captured)
+            return;
+    }
+    mouse_aim_captured = captured;
+    if (captured)
+        updateMouseAimClip();
+    else
+        ClipCursor(nullptr);
+#else
+    // Raw mouse motion is only implemented for Windows
+    if (captured) {
+        qCWarning(chiakiGui) << "Mouse aim is only supported on Windows";
+        return;
+    }
+    mouse_aim_captured = false;
+#endif
+    // While captured the cursor is hidden; once released it is always visible so it can be used elsewhere
+    setCursor(captured ? Qt::BlankCursor : Qt::ArrowCursor);
+    if (session)
+        session->SetMouseAimActive(captured);
+}
+
+void QmlMainWindow::updateMouseAimClip()
+{
+#if defined(Q_OS_WIN)
+    // Pin the cursor to the window center so clicks always land on the stream
+    HWND hwnd = reinterpret_cast<HWND>(winId());
+    RECT rc;
+    if (!GetClientRect(hwnd, &rc))
+        return;
+    POINT center = { (rc.right - rc.left) / 2, (rc.bottom - rc.top) / 2 };
+    ClientToScreen(hwnd, &center);
+    SetCursorPos(center.x, center.y);
+    RECT clip = { center.x, center.y, center.x + 1, center.y + 1 };
+    ClipCursor(&clip);
+#endif
+}
+
+bool QmlMainWindow::nativeEvent(const QByteArray &eventType, void *message, qintptr *result)
+{
+#if defined(Q_OS_WIN)
+    if (mouse_aim_captured && session && eventType == "windows_generic_MSG") {
+        MSG *msg = static_cast<MSG *>(message);
+        if (msg->message == WM_INPUT) {
+            RAWINPUT raw;
+            UINT size = sizeof(raw);
+            if (GetRawInputData(reinterpret_cast<HRAWINPUT>(msg->lParam), RID_INPUT, &raw, &size, sizeof(RAWINPUTHEADER)) != (UINT)-1
+                    && raw.header.dwType == RIM_TYPEMOUSE
+                    && !(raw.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE))
+                session->HandleMouseAimDelta(raw.data.mouse.lLastX, raw.data.mouse.lLastY);
+        }
+        else if (msg->message == WM_ACTIVATE && LOWORD(msg->wParam) == WA_INACTIVE) {
+            setMouseAimCaptured(false);
+        }
+    }
+#endif
+    return QWindow::nativeEvent(eventType, message, result);
 }

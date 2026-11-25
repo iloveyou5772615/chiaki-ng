@@ -809,6 +809,61 @@ void QmlSettings::setMouseTouchEnabled(bool enabled)
     emit mouseTouchEnabledChanged();
 }
 
+bool QmlSettings::mouseAimEnabled() const
+{
+    return settings->GetMouseAimEnabled();
+}
+
+void QmlSettings::setMouseAimEnabled(bool enabled)
+{
+    settings->SetMouseAimEnabled(enabled);
+    emit mouseAimEnabledChanged();
+}
+
+float QmlSettings::mouseAimSensitivity() const
+{
+    return settings->GetMouseAimSensitivity();
+}
+
+void QmlSettings::setMouseAimSensitivity(float sensitivity)
+{
+    settings->SetMouseAimSensitivity(sensitivity);
+    emit mouseAimSensitivityChanged();
+}
+
+float QmlSettings::mouseAimDeadzone() const
+{
+    return settings->GetMouseAimDeadzone();
+}
+
+void QmlSettings::setMouseAimDeadzone(float deadzone)
+{
+    settings->SetMouseAimDeadzone(deadzone);
+    emit mouseAimDeadzoneChanged();
+}
+
+float QmlSettings::mouseAimCurve() const
+{
+    return settings->GetMouseAimCurve();
+}
+
+void QmlSettings::setMouseAimCurve(float curve)
+{
+    settings->SetMouseAimCurve(curve);
+    emit mouseAimCurveChanged();
+}
+
+bool QmlSettings::mouseAimInvertY() const
+{
+    return settings->GetMouseAimInvertY();
+}
+
+void QmlSettings::setMouseAimInvertY(bool invert)
+{
+    settings->SetMouseAimInvertY(invert);
+    emit mouseAimInvertYChanged();
+}
+
 bool QmlSettings::keyboardEnabled() const
 {
     return settings->GetKeyboardEnabled();
@@ -1947,6 +2002,11 @@ void QmlSettings::refreshAllKeys()
     emit psnAuthTokenExpiryChanged();
     emit psnAccountIdChanged();
     emit mouseTouchEnabledChanged();
+    emit mouseAimEnabledChanged();
+    emit mouseAimSensitivityChanged();
+    emit mouseAimDeadzoneChanged();
+    emit mouseAimCurveChanged();
+    emit mouseAimInvertYChanged();
     emit keyboardEnabledChanged();
     emit dpadTouchEnabledChanged();
     emit iDROnFECFailureEnabledChanged();

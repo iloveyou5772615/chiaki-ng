@@ -443,6 +443,18 @@ class Settings : public QObject
 		bool GetMouseTouchEnabled() const;
 		void SetMouseTouchEnabled(bool enabled);
 
+		// Mouse aim: mouse motion drives the right stick while captured (toggle with F8)
+		bool GetMouseAimEnabled() const;
+		void SetMouseAimEnabled(bool enabled);
+		float GetMouseAimSensitivity() const;
+		void SetMouseAimSensitivity(float sensitivity);
+		float GetMouseAimDeadzone() const;
+		void SetMouseAimDeadzone(float deadzone);
+		float GetMouseAimCurve() const;
+		void SetMouseAimCurve(float curve);
+		bool GetMouseAimInvertY() const;
+		void SetMouseAimInvertY(bool invert);
+
 		bool GetDpadTouchEnabled() const;
 		void SetDpadTouchEnabled(bool enabled);
 

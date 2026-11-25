@@ -7,6 +7,7 @@
 #include <QUrl>
 #include <QKeySequence>
 #include <QCoreApplication>
+#include <algorithm>
 
 #include <chiaki/config.h>
 
@@ -994,6 +995,51 @@ bool Settings::GetMouseTouchEnabled() const
 void Settings::SetMouseTouchEnabled(bool enabled)
 {
 	settings.setValue("settings/mouse_touch_enabled", enabled);
+}
+
+bool Settings::GetMouseAimEnabled() const
+{
+	return settings.value("settings/mouse_aim_enabled", false).toBool();
+}
+void Settings::SetMouseAimEnabled(bool enabled)
+{
+	settings.setValue("settings/mouse_aim_enabled", enabled);
+}
+
+float Settings::GetMouseAimSensitivity() const
+{
+	return std::clamp(settings.value("settings/mouse_aim_sensitivity", 1.0f).toFloat(), 0.05f, 10.0f);
+}
+void Settings::SetMouseAimSensitivity(float sensitivity)
+{
+	settings.setValue("settings/mouse_aim_sensitivity", std::clamp(sensitivity, 0.05f, 10.0f));
+}
+
+float Settings::GetMouseAimDeadzone() const
+{
+	return std::clamp(settings.value("settings/mouse_aim_deadzone", 0.15f).toFloat(), 0.0f, 0.6f);
+}
+void Settings::SetMouseAimDeadzone(float deadzone)
+{
+	settings.setValue("settings/mouse_aim_deadzone", std::clamp(deadzone, 0.0f, 0.6f));
+}
+
+float Settings::GetMouseAimCurve() const
+{
+	return std::clamp(settings.value("settings/mouse_aim_curve", 1.0f).toFloat(), 0.3f, 3.0f);
+}
+void Settings::SetMouseAimCurve(float curve)
+{
+	settings.setValue("settings/mouse_aim_curve", std::clamp(curve, 0.3f, 3.0f));
+}
+
+bool Settings::GetMouseAimInvertY() const
+{
+	return settings.value("settings/mouse_aim_invert_y", false).toBool();
+}
+void Settings::SetMouseAimInvertY(bool invert)
+{
+	settings.setValue("settings/mouse_aim_invert_y", invert);
 }
 
 

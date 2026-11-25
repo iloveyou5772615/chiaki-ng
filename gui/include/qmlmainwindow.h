@@ -266,6 +266,11 @@ private:
     void snapshotPendingFrame();
     bool handleShortcut(QKeyEvent *event);
     bool event(QEvent *event) override;
+    bool nativeEvent(const QByteArray &eventType, void *message, qintptr *result) override;
+    // Mouse aim: lock the cursor and feed raw mouse motion to the session (F8 toggles)
+    void setMouseAimCaptured(bool captured);
+    void updateMouseAimClip();
+    bool mouse_aim_captured = false;
     QObject *focusObject() const override;
     void updateQueueDepthAverage(int depth);
     void updatePendingFrameAge(double age);

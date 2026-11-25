@@ -95,6 +95,11 @@ class SdeckHapticsWorker;
 		bool enable_keyboard;
 		bool keyboard_controller_enabled;
 		bool mouse_touch_enabled;
+		bool mouse_aim_enabled = false;
+		float mouse_aim_sensitivity = 1.0f;
+		float mouse_aim_deadzone = 0.15f;
+		float mouse_aim_curve = 1.0f;
+		bool mouse_aim_invert_y = false;
 		bool enable_dualsense;
 		bool auto_regist;
 		float haptic_override;
@@ -229,6 +234,20 @@ class StreamSession : public QObject
 		float haptic_override;
 		bool keyboard_controller_enabled;
 		bool mouse_touch_enabled;
+		// Mouse aim (mouse motion -> right stick, mouse buttons -> R2/L2/R3/L1/R1)
+		ChiakiControllerState mouse_state;
+		bool mouse_aim_enabled;
+		bool mouse_aim_active;
+		float mouse_aim_sensitivity;
+		float mouse_aim_deadzone;
+		float mouse_aim_curve;
+		bool mouse_aim_invert_y;
+		double mouse_aim_accum_x, mouse_aim_accum_y;
+		double mouse_aim_smooth_x, mouse_aim_smooth_y;
+		int mouse_aim_idle_ticks;
+		QTimer *mouse_aim_timer;
+		QElapsedTimer mouse_aim_clock;
+		void MouseAimTick();
 		bool dpad_regular;
 		bool dpad_regular_touch_switched;
 		uint dpad_touch_shortcut1;
@@ -371,6 +390,11 @@ class StreamSession : public QObject
 		void HandleMouseReleaseEvent(QMouseEvent *event);
 		void HandleMousePressEvent(QMouseEvent *event);
 		void HandleMouseMoveEvent(QMouseEvent *event, qreal width, qreal height);
+		bool GetMouseAimEnabled() const { return mouse_aim_enabled; }
+		bool GetMouseAimActive() const { return mouse_aim_active; }
+		void SetMouseAimActive(bool active);
+		void HandleMouseAimDelta(long dx, long dy);
+		void HandleMouseAimButton(Qt::MouseButton button, bool pressed);
 #if CHIAKI_GUI_ENABLE_SPEEX
 		bool ProcessMicFrame(int16_t *echo_buf);
 #endif

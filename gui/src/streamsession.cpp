@@ -17,6 +17,7 @@
 #include <atomic>
 
 #include <algorithm>
+#include <cmath>
 
 #include <cstring>
 
@@ -26,6 +27,12 @@
 #define STEAMDECK_HAPTIC_CONNECT_DELAY_MS 1100
 #define NEW_DPAD_TOUCH_INTERVAL_MS 500
 #define DPAD_TOUCH_UPDATE_INTERVAL_MS 10
+// Mouse aim: how often accumulated mouse motion is turned into a right stick value
+#define MOUSE_AIM_TICK_MS 4
+// Mouse speed (counts per ms) that gives full stick deflection at sensitivity 1.0
+#define MOUSE_AIM_FULL_SPEED 8.0
+// Smoothing time constant, evens out mice that report slower than the tick rate
+#define MOUSE_AIM_SMOOTH_MS 10.0
 #define STEAMDECK_HAPTIC_PACKETS_PER_ANALYSIS 4 // send packets every interval * packets per analysis
 #define RUMBLE_HAPTICS_PACKETS_PER_RUMBLE 3
 #define STEAMDECK_HAPTIC_SAMPLING_RATE 3000
@@ -303,6 +310,11 @@ StreamSessionConnectInfo::StreamSessionConnectInfo(
 	const bool keyboard_controller_enabled_setting = settings->GetKeyboardEnabled();
 	this->keyboard_controller_enabled = keyboard_controller_enabled_setting;
 	this->mouse_touch_enabled = settings->GetMouseTouchEnabled();
+	this->mouse_aim_enabled = settings->GetMouseAimEnabled();
+	this->mouse_aim_sensitivity = settings->GetMouseAimSensitivity();
+	this->mouse_aim_deadzone = settings->GetMouseAimDeadzone();
+	this->mouse_aim_curve = settings->GetMouseAimCurve();
+	this->mouse_aim_invert_y = settings->GetMouseAimInvertY();
 	this->enable_keyboard = false;
 	this->enable_dualsense = true;
 	this->enable_idr_on_fec_failure = settings->GetIDROnFECFailureEnabled();
@@ -463,6 +475,20 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	audio_buffer_size = connect_info.audio_buffer_size;
 	mouse_touch_enabled = connect_info.mouse_touch_enabled;
 	keyboard_controller_enabled = connect_info.keyboard_controller_enabled;
+	mouse_aim_enabled = connect_info.mouse_aim_enabled;
+	mouse_aim_active = false;
+	mouse_aim_sensitivity = connect_info.mouse_aim_sensitivity;
+	mouse_aim_deadzone = connect_info.mouse_aim_deadzone;
+	mouse_aim_curve = connect_info.mouse_aim_curve;
+	mouse_aim_invert_y = connect_info.mouse_aim_invert_y;
+	mouse_aim_accum_x = mouse_aim_accum_y = 0.0;
+	mouse_aim_smooth_x = mouse_aim_smooth_y = 0.0;
+	mouse_aim_idle_ticks = 0;
+	chiaki_controller_state_set_idle(&mouse_state);
+	mouse_aim_timer = new QTimer(this);
+	mouse_aim_timer->setTimerType(Qt::PreciseTimer);
+	mouse_aim_timer->setInterval(MOUSE_AIM_TICK_MS);
+	connect(mouse_aim_timer, &QTimer::timeout, this, &StreamSession::MouseAimTick);
 	host = connect_info.host;
 	QByteArray host_str = connect_info.host.toUtf8();
 
@@ -1001,6 +1027,125 @@ void StreamSession::HandleKeyboardEvent(QKeyEvent *event)
 	SendFeedbackState();
 }
 
+void StreamSession::SetMouseAimActive(bool active)
+{
+	if(!mouse_aim_enabled)
+		active = false;
+	if(active == mouse_aim_active)
+		return;
+	mouse_aim_active = active;
+	mouse_aim_accum_x = mouse_aim_accum_y = 0.0;
+	mouse_aim_smooth_x = mouse_aim_smooth_y = 0.0;
+	mouse_aim_idle_ticks = 0;
+	// Releasing the mouse also releases any held mouse buttons and centers the stick
+	chiaki_controller_state_set_idle(&mouse_state);
+	if(active)
+	{
+		// A touchpad gesture started by the mouse must not stay stuck while aiming
+		if(mouse_touch_id >= 0)
+		{
+			chiaki_controller_state_stop_touch(&keyboard_state, (uint8_t)mouse_touch_id);
+			mouse_touch_id = -1;
+		}
+		keyboard_state.buttons &= ~CHIAKI_CONTROLLER_BUTTON_TOUCHPAD;
+		mouse_aim_clock.start();
+		mouse_aim_timer->start();
+	}
+	else
+		mouse_aim_timer->stop();
+	CHIAKI_LOGI(GetChiakiLog(), "Mouse aim %s", active ? "captured" : "released");
+	SendFeedbackState();
+}
+
+void StreamSession::HandleMouseAimDelta(long dx, long dy)
+{
+	if(!mouse_aim_active)
+		return;
+	mouse_aim_accum_x += dx;
+	mouse_aim_accum_y += dy;
+}
+
+void StreamSession::HandleMouseAimButton(Qt::MouseButton button, bool pressed)
+{
+	if(!mouse_aim_active)
+		return;
+	switch(button)
+	{
+		case Qt::LeftButton: // shoot
+			mouse_state.r2_state = pressed ? 0xff : 0;
+			break;
+		case Qt::RightButton: // aim
+			mouse_state.l2_state = pressed ? 0xff : 0;
+			break;
+		case Qt::MiddleButton:
+			if(pressed)
+				mouse_state.buttons |= CHIAKI_CONTROLLER_BUTTON_R3;
+			else
+				mouse_state.buttons &= ~CHIAKI_CONTROLLER_BUTTON_R3;
+			break;
+		case Qt::BackButton:
+			if(pressed)
+				mouse_state.buttons |= CHIAKI_CONTROLLER_BUTTON_L1;
+			else
+				mouse_state.buttons &= ~CHIAKI_CONTROLLER_BUTTON_L1;
+			break;
+		case Qt::ForwardButton:
+			if(pressed)
+				mouse_state.buttons |= CHIAKI_CONTROLLER_BUTTON_R1;
+			else
+				mouse_state.buttons &= ~CHIAKI_CONTROLLER_BUTTON_R1;
+			break;
+		default:
+			return;
+	}
+	SendFeedbackState();
+}
+
+void StreamSession::MouseAimTick()
+{
+	if(!mouse_aim_active)
+		return;
+	double dt = mouse_aim_clock.nsecsElapsed() / 1e6;
+	mouse_aim_clock.restart();
+	if(dt <= 0.0)
+		dt = MOUSE_AIM_TICK_MS;
+	// After a stall (window drag, breakpoint, ...) don't turn the backlog into a huge flick
+	dt = (std::min)(dt, 50.0);
+
+	const bool moved = mouse_aim_accum_x != 0.0 || mouse_aim_accum_y != 0.0;
+	const double vx = mouse_aim_accum_x / dt;
+	const double vy = mouse_aim_accum_y / dt;
+	mouse_aim_accum_x = mouse_aim_accum_y = 0.0;
+
+	const double alpha = 1.0 - std::exp(-dt / MOUSE_AIM_SMOOTH_MS);
+	mouse_aim_smooth_x += (vx - mouse_aim_smooth_x) * alpha;
+	mouse_aim_smooth_y += (vy - mouse_aim_smooth_y) * alpha;
+
+	// Snap back to center once the mouse has really stopped (3 empty ticks covers 125 Hz mice)
+	mouse_aim_idle_ticks = moved ? 0 : mouse_aim_idle_ticks + 1;
+	if(mouse_aim_idle_ticks >= 3)
+		mouse_aim_smooth_x = mouse_aim_smooth_y = 0.0;
+
+	int16_t rx = 0, ry = 0;
+	const double mag = std::hypot(mouse_aim_smooth_x, mouse_aim_smooth_y);
+	if(mag > 0.02)
+	{
+		double n = (std::min)(1.0, mag * mouse_aim_sensitivity / MOUSE_AIM_FULL_SPEED);
+		n = std::pow(n, (double)mouse_aim_curve);
+		// Jump over the game's own stick deadzone so slow mouse movement still turns the camera
+		double out = (std::min)(1.0, mouse_aim_deadzone + (1.0 - mouse_aim_deadzone) * n);
+		rx = (int16_t)std::lround(mouse_aim_smooth_x / mag * out * 32767.0);
+		ry = (int16_t)std::lround(mouse_aim_smooth_y / mag * out * 32767.0 * (mouse_aim_invert_y ? -1.0 : 1.0));
+	}
+
+	if(rx != mouse_state.right_x || ry != mouse_state.right_y)
+	{
+		mouse_state.right_x = rx;
+		mouse_state.right_y = ry;
+		SendFeedbackState();
+	}
+}
+
 void StreamSession::HandleTouchEvent(QTouchEvent *event, qreal width, qreal height)
 {
 	//unset touchpad (we will set it if user touches edge of screen)
@@ -1284,6 +1429,7 @@ void StreamSession::DpadSendFeedbackState()
 	chiaki_controller_state_or(&state, &state, &sdeck_state);
 #endif
 	chiaki_controller_state_or(&state, &state, &keyboard_state);
+	chiaki_controller_state_or(&state, &state, &mouse_state);
 	chiaki_controller_state_or(&state, &state, &touch_state);
 
 	if(input_block)
@@ -1340,6 +1486,7 @@ void StreamSession::SendFeedbackState()
 	chiaki_controller_state_or(&state, &state, &sdeck_state);
 #endif
 	chiaki_controller_state_or(&state, &state, &keyboard_state);
+	chiaki_controller_state_or(&state, &state, &mouse_state);
 	chiaki_controller_state_or(&state, &state, &touch_state);
 
 	if(input_block)
